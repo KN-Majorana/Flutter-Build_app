@@ -9,7 +9,7 @@ class CurrentLocationMarker extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.blue,
-        border: Border.all(color: Colors.white, width: 3),
+        border: Border.all(color: Colors.white, width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.blue.withValues(alpha: 0.4),

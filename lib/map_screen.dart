@@ -11,7 +11,13 @@ import 'ghost_track.dart';
 import 'location_service.dart';
 import 'map_mode.dart';
 import 'mode_switcher.dart';
+import 'photo_detail_sheet.dart';
+import 'photo_list_screen.dart';
+import 'photo_pin.dart';
+import 'photo_pin_marker.dart';
+import 'photo_service.dart';
 import 'recording_controls.dart';
+import 'track_picker_sheet.dart';
 import 'track_storage_service.dart';
 import 'walk_track.dart';
 
@@ -50,6 +56,9 @@ class _MapScreenState extends State<MapScreen> {
   Timer? _ghostTimer;
   DateTime? _ghostStartedAt;
   LatLng? _ghostPosition;
+
+  // 写真ピン(撮影した位置に表示)
+  final List<PhotoPin> _photoPins = [];
 
   bool get _isRecording => _currentTrack != null && _currentTrack!.isActive;
 
@@ -196,12 +205,14 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // ─── 再生開始 ───
-  void _startGhostPlayback() {
+  // [target] を省略すると最新の保存済み軌跡を使う。
+  void _startGhostPlayback({WalkTrack? target}) {
     _stopGhostPlayback();
 
-    // 再生対象は最新の保存済み軌跡。2点未満なら再生できない。
-    final target = _savedTracks.isNotEmpty ? _savedTracks.last : null;
-    if (target == null || target.points.length < 2) {
+    final selected =
+        target ?? (_savedTracks.isNotEmpty ? _savedTracks.last : null);
+
+    if (selected == null || selected.points.length < 2) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -210,15 +221,15 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    final ghost = GhostTrack(target, speed: _ghostSpeed);
+    final ghost = GhostTrack(selected, speed: _ghostSpeed);
     setState(() {
       _ghost = ghost;
       _ghostStartedAt = DateTime.now();
-      _ghostPosition = target.points.first.position;
+      _ghostPosition = selected.points.first.position;
     });
 
     // 軌跡の先頭にカメラを寄せる
-    _mapController.move(target.points.first.position, 16.0);
+    _mapController.move(selected.points.first.position, 16.0);
 
     _ghostTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (!mounted || _ghost == null || _ghostStartedAt == null) return;
@@ -246,6 +257,114 @@ class _MapScreenState extends State<MapScreen> {
       _ghostStartedAt = null;
       _ghostPosition = null;
     });
+  }
+
+  // ─── 軌跡選択シートを開く ───
+  Future<void> _openTrackPicker() async {
+    final selected = await TrackPickerSheet.show(
+      context,
+      tracks: _savedTracks,
+      selectedId: _ghost?.track.id,
+    );
+    if (selected != null && mounted) {
+      _startGhostPlayback(target: selected);
+    }
+  }
+
+  // ─── 写真撮影 ───
+  Future<void> _takePhoto() async {
+    try {
+      // 撮影直前に最新の現在地を取りに行く(記録中でなくても位置情報を付けたいため)
+      LatLng photoPosition = _currentPosition;
+      try {
+        photoPosition = await LocationService.getCurrentPosition();
+      } catch (_) {
+        // 取得できなければ最後に分かっている現在地を使う
+      }
+
+      final path = await PhotoService.takeAndSavePhoto();
+      if (path == null) return; // キャンセル
+      if (!mounted) return;
+
+      setState(() {
+        _photoPins.add(
+          PhotoPin(
+            imagePath: path,
+            position: photoPosition,
+            takenAt: DateTime.now(),
+          ),
+        );
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('写真を保存しました')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('撮影に失敗: $e')));
+    }
+  }
+
+  void _openPhotoList() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => PhotoListScreen(photoPins: _photoPins)),
+    );
+  }
+
+  // ─── 再生モード時の「軌跡選択カード」 ───
+  Widget _buildTrackPickerButton() {
+    final current = _ghost?.track;
+    final label = current == null
+        ? '記録を選ぶ'
+        : '${current.startedAt.month}/${current.startedAt.day} '
+              '${current.startedAt.hour.toString().padLeft(2, '0')}:'
+              '${current.startedAt.minute.toString().padLeft(2, '0')} の散歩';
+
+    return Material(
+      elevation: 6,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: _openTrackPicker,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(Icons.history_rounded, color: Color(0xFF2E7D32)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      '再生中の記録',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.expand_less_rounded, color: Colors.grey.shade600),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -305,14 +424,30 @@ class _MapScreenState extends State<MapScreen> {
                   clearedPoints: clearedPoints,
                   clearRadius: _fogClearRadius,
                 ),
+              // 写真ピン(全モードで表示)
+              if (_photoPins.isNotEmpty)
+                MarkerLayer(
+                  markers: [
+                    for (final pin in _photoPins)
+                      Marker(
+                        point: pin.position,
+                        width: 56,
+                        height: 56,
+                        child: GestureDetector(
+                          onTap: () => PhotoDetailSheet.show(context, pin),
+                          child: PhotoPinMarker(imagePath: pin.imagePath),
+                        ),
+                      ),
+                  ],
+                ),
               // 現在地マーカー(再生モード以外)
               if (_hasLocation && _mode != MapMode.animation)
                 MarkerLayer(
                   markers: [
                     Marker(
                       point: _currentPosition,
-                      width: 30,
-                      height: 30,
+                      width: 10,
+                      height: 10,
                       child: const CurrentLocationMarker(),
                     ),
                   ],
@@ -367,7 +502,7 @@ class _MapScreenState extends State<MapScreen> {
           if (_mode == MapMode.normal)
             Positioned(
               left: 16,
-              right: 16,
+              right: 76,
               bottom: 0,
               child: SafeArea(
                 child: Padding(
@@ -382,16 +517,52 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ),
+
+          // ── 下部:軌跡選択カード(再生モード時のみ) ──
+          if (_mode == MapMode.animation)
+            Positioned(
+              left: 16,
+              right: 76,
+              bottom: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _buildTrackPickerButton(),
+                ),
+              ),
+            ),
         ],
       ),
 
-      // 現在地に戻るボタン
-      floatingActionButton: FloatingActionButton.small(
-        onPressed: _hasLocation
-            ? () => _mapController.move(_currentPosition, 16.0)
-            : null,
-        heroTag: 'recenter',
-        child: const Icon(Icons.my_location),
+      // 右下のFAB群(縦並び)
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // 写真一覧
+          FloatingActionButton.small(
+            onPressed: _openPhotoList,
+            heroTag: 'photo_list',
+            child: const Icon(Icons.photo_library_outlined),
+          ),
+          const SizedBox(height: 8),
+          // 写真撮影(再生モード中は隠す)
+          if (_mode != MapMode.animation)
+            FloatingActionButton.small(
+              onPressed: _takePhoto,
+              heroTag: 'photo_take',
+              child: const Icon(Icons.camera_alt),
+            ),
+          if (_mode != MapMode.animation) const SizedBox(height: 8),
+          // 現在地に戻る
+          FloatingActionButton.small(
+            onPressed: _hasLocation
+                ? () => _mapController.move(_currentPosition, 16.0)
+                : null,
+            heroTag: 'recenter',
+            child: const Icon(Icons.my_location),
+          ),
+        ],
       ),
     );
   }

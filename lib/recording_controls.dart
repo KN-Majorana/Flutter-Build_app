@@ -32,22 +32,20 @@ class RecordingControls extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
         child: Row(
           children: [
-            // 記録中インジケータ
             _RecordingDot(isRecording: isRecording),
             const SizedBox(width: 12),
-            // 統計
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    isRecording ? '記録中' : '停止中',
+                    isRecording ? '散歩中' : '停止中',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                       color: isRecording
-                          ? Colors.red.shade700
+                          ? Colors.green.shade700
                           : Colors.grey.shade700,
                     ),
                   ),
@@ -63,18 +61,104 @@ class RecordingControls extends StatelessWidget {
                 ],
               ),
             ),
-            // ボタン
-            FilledButton.icon(
-              onPressed: isRecording ? onStop : onStart,
-              icon: Icon(isRecording ? Icons.stop : Icons.fiber_manual_record),
-              label: Text(isRecording ? '停止' : '開始'),
-              style: FilledButton.styleFrom(
-                backgroundColor: isRecording
-                    ? Colors.grey.shade700
-                    : Colors.red,
-              ),
+            _WalkActionButton(
+              isRecording: isRecording,
+              onStart: onStart,
+              onStop: onStop,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 散歩開始/終了の切り替えボタン。
+///
+/// コンパクトな縦長レイアウト(アイコンの下に小さいラベル)で、
+/// 横幅を取りすぎないように設計してある。
+class _WalkActionButton extends StatefulWidget {
+  final bool isRecording;
+  final VoidCallback onStart;
+  final VoidCallback onStop;
+
+  const _WalkActionButton({
+    required this.isRecording,
+    required this.onStart,
+    required this.onStop,
+  });
+
+  @override
+  State<_WalkActionButton> createState() => _WalkActionButtonState();
+}
+
+class _WalkActionButtonState extends State<_WalkActionButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed == v) return;
+    setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recording = widget.isRecording;
+
+    // 状態ごとの色と表示内容
+    final gradient = recording
+        ? const [Color(0xFF9E9E9E), Color(0xFF616161)]
+        : const [Color(0xFF66BB6A), Color(0xFF2E7D32)];
+    final shadowColor = recording
+        ? const Color(0xFF616161)
+        : const Color(0xFF2E7D32);
+    final icon = recording ? Icons.stop_rounded : Icons.directions_walk_rounded;
+    final label = recording ? '散歩終了' : '散歩開始';
+
+    return GestureDetector(
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: recording ? widget.onStop : widget.onStart,
+      child: AnimatedScale(
+        scale: _pressed ? 0.94 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          width: 68,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: gradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: shadowColor.withValues(alpha: _pressed ? 0.2 : 0.4),
+                blurRadius: _pressed ? 6 : 12,
+                offset: Offset(0, _pressed ? 2 : 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: Colors.white, size: 26),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -120,7 +204,7 @@ class _RecordingDotState extends State<_RecordingDot>
         height: 14,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: widget.isRecording ? Colors.red : Colors.grey.shade400,
+          color: widget.isRecording ? Colors.green : Colors.grey.shade400,
         ),
       ),
     );
