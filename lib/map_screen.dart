@@ -20,6 +20,7 @@ import 'recording_controls.dart';
 import 'track_picker_sheet.dart';
 import 'track_storage_service.dart';
 import 'walk_track.dart';
+import 'ghost_marker.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -446,8 +447,8 @@ class _MapScreenState extends State<MapScreen> {
                   markers: [
                     Marker(
                       point: _currentPosition,
-                      width: 10,
-                      height: 10,
+                      width: 13,
+                      height: 13,
                       child: const CurrentLocationMarker(),
                     ),
                   ],
@@ -458,22 +459,9 @@ class _MapScreenState extends State<MapScreen> {
                   markers: [
                     Marker(
                       point: _ghostPosition!,
-                      width: 28,
-                      height: 28,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.green,
-                          border: Border.all(color: Colors.white, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.green.withValues(alpha: 0.5),
-                              blurRadius: 10,
-                              spreadRadius: 3,
-                            ),
-                          ],
-                        ),
-                      ),
+                      width: 13,
+                      height: 13,
+                      child: const GhostMarker(),
                     ),
                   ],
                 ),
