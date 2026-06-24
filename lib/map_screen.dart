@@ -21,6 +21,7 @@ import 'track_picker_sheet.dart';
 import 'track_storage_service.dart';
 import 'walk_track.dart';
 import 'ghost_marker.dart';
+import 'package:opencv_dart/opencv.dart' as cv;
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
